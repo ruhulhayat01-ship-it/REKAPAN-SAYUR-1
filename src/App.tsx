@@ -104,6 +104,34 @@ export default function App() {
   };
 
   /* ======================
+     EXPORT (ADMIN)
+  ====================== */
+  const exportExcel = async () => {
+    const { data, error } = await supabase
+      .from("aplikasi_rekap_sayur")
+      .select("*")
+      .eq("tanggal", tanggal)
+      .order("dapur");
+
+    if (error) {
+      alert("❌ Gagal ambil data");
+      return;
+    }
+
+    let csv = "Tanggal,Dapur,Nama Sayur,Kg\n";
+    data.forEach((r) => {
+      csv += `${r.tanggal},${r.dapur},${r.nama_sayur},${r.kg}\n`;
+    });
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Rekap-Sayur-${tanggal}.csv`;
+    link.click();
+  };
+
+  /* ======================
      UI
   ====================== */
   return (
@@ -149,6 +177,15 @@ export default function App() {
             >
               Keluar Admin
             </button>
+
+            <div style={{ marginTop: 10 }}>
+              <button onClick={exportExcel} style={{ marginRight: 10 }}>
+                📊 Export Excel
+              </button>
+              <button onClick={() => window.print()}>
+                🧾 Export PDF
+              </button>
+            </div>
           </>
         )}
       </div>
