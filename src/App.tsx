@@ -1,72 +1,249 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 
-type Item = {
+/* ======================
+   KONFIGURASI
+====================== */
+const dapurList = [
+  "Krai",
+  "Petahunan",
+  "Kunir",
+  "Bades",
+  "Wonorejo",
+  "Randuagung",
+];
+
+const ADMIN_PIN = "1234"; // ganti PIN sesukamu
+const todayISO = new Date().toISOString().split("T")[0];
+
+const tanggalIndonesia = new Date().toLocaleDateString("id-ID", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+});
+
+/* ======================
+   TYPE DATA
+====================== */
+type Sayur = {
   nama: string;
-  qty: number;
+  kg: number;
 };
 
+type Dapur = {
+  nama: string;
+  sayur: Sayur[];
+};
+
+/* ======================
+   APP
+====================== */
 export default function App() {
-  const [nama, setNama] = useState("");
-  const [qty, setQty] = useState<number>(0);
-  const [items, setItems] = useState<Item[]>([]);
+  /* ===== ADMIN ===== */
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [selectedDate, setSelectedDate] = useState(todayISO);
 
-  // ambil data lama
+  const dataKey = "MBG-" + selectedDate;
+
+  /* ===== DATA ===== */
+  const [data, setData] = useState<Dapur[]>(() => {
+    const saved = localStorage.getItem(dataKey);
+    if (saved) return JSON.parse(saved);
+
+    return dapurList.map((d) => ({
+      nama: d,
+      sayur: [{ nama: "", kg: 0 }],
+    }));
+  });
+
+  /* simpan otomatis */
   useEffect(() => {
-    const saved = localStorage.getItem("rekapan-sayur");
-    if (saved) setItems(JSON.parse(saved));
-  }, []);
+    localStorage.setItem(dataKey, JSON.stringify(data));
+  }, [data, dataKey]);
 
-  // simpan otomatis
+  /* ganti data saat ganti tanggal */
   useEffect(() => {
-    localStorage.setItem("rekapan-sayur", JSON.stringify(items));
-  }, [items]);
+    const saved = localStorage.getItem(dataKey);
+    if (saved) {
+      setData(JSON.parse(saved));
+    } else {
+      setData(
+        dapurList.map((d) => ({
+          nama: d,
+          sayur: [{ nama: "", kg: 0 }],
+        }))
+      );
+    }
+  }, [dataKey]);
 
-  const tambah = () => {
-    if (!nama || qty <= 0) return;
-    setItems([...items, { nama, qty }]);
-    setNama("");
-    setQty(0);
+  /* ===== HANDLER ===== */
+  const updateSayur = (
+    dIndex: number,
+    sIndex: number,
+    field: "nama" | "kg",
+    value: string
+  ) => {
+    const newData = [...data];
+    if (field === "kg") {
+      newData[dIndex].sayur[sIndex].kg = Number(value);
+    } else {
+      newData[dIndex].sayur[sIndex].nama = value;
+    }
+    setData(newData);
   };
 
-  const hapus = (i: number) => {
-    setItems(items.filter((_, index) => index !== i));
+  const tambahSayur = (dIndex: number) => {
+    const newData = [...data];
+    newData[dIndex].sayur.push({ nama: "", kg: 0 });
+    setData(newData);
   };
 
+  const hapusSayur = (dIndex: number, sIndex: number) => {
+    const newData = [...data];
+    newData[dIndex].sayur.splice(sIndex, 1);
+    setData(newData);
+  };
+
+  const totalKg = data.reduce(
+    (t, d) => t + d.sayur.reduce((s, x) => s + x.kg, 0),
+    0
+  );
+
+  /* ===== EXPORT ===== */
+  const exportExcel = () => {
+    let csv = "Tanggal,Dapur,Nama Sayur,Kg\n";
+    data.forEach((d) => {
+      d.sayur.forEach((s) => {
+        csv += `${selectedDate},${d.nama},${s.nama},${s.kg}\n`;
+      });
+    });
+
+    const blob = new Blob([csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Rekap-Sayur-${selectedDate}.csv`;
+    link.click();
+  };
+
+  /* ======================
+     UI
+  ====================== */
   return (
-    <div style={{ padding: 20, maxWidth: 500 }}>
-      <h1>REKAPAN SAYUR 🥬</h1>
+    <div className="app-container">
+      {/* HEADER */}
+      <div className="app-header">
+        <h2>Rekap Kebutuhan Sayur – MBG</h2>
+        <p>{tanggalIndonesia}</p>
+      </div>
 
-      <input
-        placeholder="Nama sayur"
-        value={nama}
-        onChange={(e) => setNama(e.target.value)}
-        style={{ width: "100%", padding: 8, marginBottom: 8 }}
-      />
+      {/* ADMIN PANEL */}
+      <div className="admin-panel">
+        {!isAdmin ? (
+          <>
+            <input
+              type="password"
+              placeholder="PIN Admin"
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
+            />
+            <button
+              onClick={() => {
+                if (pinInput === ADMIN_PIN) {
+                  setIsAdmin(true);
+                  setPinInput("");
+                } else {
+                  alert("PIN salah");
+                }
+              }}
+            >
+              Masuk Admin
+            </button>
+          </>
+        ) : (
+          <>
+            <strong>Mode Admin Aktif</strong>
+            <br />
+            <label>Pilih Tanggal: </label>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+            />
+            <button
+              className="secondary"
+              style={{ marginLeft: 10 }}
+              onClick={() => {
+                setIsAdmin(false);
+                setSelectedDate(todayISO);
+              }}
+            >
+              Keluar Admin
+            </button>
+          </>
+        )}
+      </div>
 
-      <input
-        type="number"
-        placeholder="Jumlah (kg)"
-        value={qty}
-        onChange={(e) => setQty(Number(e.target.value))}
-        style={{ width: "100%", padding: 8, marginBottom: 8 }}
-      />
+      {/* GRID DAPUR */}
+      <div className="dapur-grid">
+        {data.map((d, dIndex) => (
+          <div className="dapur-card" key={dIndex}>
+            <h3>{d.nama}</h3>
 
-      <button onClick={tambah} style={{ padding: 10, width: "100%" }}>
-        ➕ Tambah
-      </button>
+            {d.sayur.map((s, sIndex) => (
+              <div key={sIndex} style={{ marginBottom: 6 }}>
+                <input
+                  placeholder="Nama Sayur"
+                  value={s.nama}
+                  onChange={(e) =>
+                    updateSayur(dIndex, sIndex, "nama", e.target.value)
+                  }
+                />
+                <input
+                  type="number"
+                  placeholder="Kg"
+                  value={s.kg}
+                  onChange={(e) =>
+                    updateSayur(dIndex, sIndex, "kg", e.target.value)
+                  }
+                  style={{ marginLeft: 5 }}
+                />
+                <button
+                  className="danger"
+                  style={{ marginLeft: 5 }}
+                  onClick={() => hapusSayur(dIndex, sIndex)}
+                >
+                  Hapus
+                </button>
+              </div>
+            ))}
 
-      <hr />
+            <button onClick={() => tambahSayur(dIndex)}>
+              + Tambah Sayur
+            </button>
+          </div>
+        ))}
+      </div>
 
-      {items.length === 0 && <p>Belum ada data</p>}
-
-      {items.map((item, i) => (
-        <div key={i} style={{ display: "flex", gap: 10, marginBottom: 6 }}>
-          <span style={{ flex: 1 }}>
-            {item.nama} — {item.qty} kg
-          </span>
-          <button onClick={() => hapus(i)}>❌</button>
-        </div>
-      ))}
+      {/* FOOTER */}
+      <div className="app-footer">
+        {isAdmin && (
+          <>
+            <button onClick={exportExcel} style={{ marginRight: 10 }}>
+              Export Excel
+            </button>
+            <button onClick={() => window.print()}>
+              Export PDF
+            </button>
+            <br />
+            <br />
+          </>
+        )}
+        Total Semua Sayur: {totalKg} Kg
+      </div>
     </div>
   );
 }
