@@ -1,13 +1,12 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 /* ======================
    SUPABASE
 ====================== */
-const supabase = createClient(
-  "https://rqmcpnkpctdlrayvouly.supabase.co",
-  "sb_publishable_8Phqrx84tQKTHlm5Rkwffw__qC0V3Q2"
-);
+const supabaseUrl = "https://rqmcpnkpctdlrayvouly.supabase.co";
+const supabaseAnonKey = "PASTE_ANON_KEY_LU_DI_SINI";
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /* ======================
    KONFIGURASI
@@ -32,42 +31,61 @@ type Sayur = {
   kg: number;
 };
 
-type DataDB = {
-  id: string;
-  tanggal: string;
+type Pesanan = {
   dapur: string;
-  nama_sayur: string;
-  kg: number;
+  sayur: Sayur[];
 };
 
 /* ======================
    APP
 ====================== */
 export default function App() {
-  const [dapur, setDapur] = useState(dapurList[0]);
-  const [sayur, setSayur] = useState<Sayur[]>([{ nama: "", kg: 0 }]);
-
   const [isAdmin, setIsAdmin] = useState(false);
-  const [pin, setPin] = useState("");
+  const [pinInput, setPinInput] = useState("");
   const [tanggal, setTanggal] = useState(todayISO);
 
-  const [dataAdmin, setDataAdmin] = useState<DataDB[]>([]);
+  const [pesanan, setPesanan] = useState<Pesanan>({
+    dapur: dapurList[0],
+    sayur: [{ nama: "", kg: 0 }],
+  });
 
   /* ======================
-     SIMPAN PESANAN
+     HANDLER
+  ====================== */
+  const updateSayur = (index: number, field: "nama" | "kg", value: string) => {
+    const newSayur = [...pesanan.sayur];
+    newSayur[index][field] = field === "kg" ? Number(value) : value;
+    setPesanan({ ...pesanan, sayur: newSayur });
+  };
+
+  const tambahSayur = () => {
+    setPesanan({
+      ...pesanan,
+      sayur: [...pesanan.sayur, { nama: "", kg: 0 }],
+    });
+  };
+
+  const hapusSayur = (index: number) => {
+    const newSayur = [...pesanan.sayur];
+    newSayur.splice(index, 1);
+    setPesanan({ ...pesanan, sayur: newSayur });
+  };
+
+  /* ======================
+     SIMPAN KE SUPABASE
   ====================== */
   const simpanPesanan = async () => {
-    const rows = sayur
+    const rows = pesanan.sayur
       .filter((s) => s.nama && s.kg > 0)
       .map((s) => ({
         tanggal,
-        dapur,
+        dapur: pesanan.dapur,
         nama_sayur: s.nama,
         kg: s.kg,
       }));
 
     if (rows.length === 0) {
-      alert("❗ Isi sayur dulu");
+      alert("❌ Tidak ada data");
       return;
     }
 
@@ -78,31 +96,10 @@ export default function App() {
     if (error) {
       alert("❌ Gagal simpan: " + error.message);
     } else {
-      alert("✅ Pesanan terkirim");
-      setSayur([{ nama: "", kg: 0 }]);
+      alert("✅ Pesanan berhasil dikirim");
+      setPesanan({ ...pesanan, sayur: [{ nama: "", kg: 0 }] });
     }
   };
-
-  /* ======================
-     AMBIL DATA ADMIN
-  ====================== */
-  const ambilDataAdmin = async () => {
-    const { data, error } = await supabase
-      .from("aplikasi_rekap_sayur")
-      .select("*")
-      .eq("tanggal", tanggal)
-      .order("dapur");
-
-    if (error) {
-      alert("❌ Gagal ambil data");
-    } else {
-      setDataAdmin(data || []);
-    }
-  };
-
-  useEffect(() => {
-    if (isAdmin) ambilDataAdmin();
-  }, [isAdmin, tanggal]);
 
   /* ======================
      UI
@@ -115,99 +112,63 @@ export default function App() {
       </div>
 
       {/* FORM DAPUR */}
-      {!isAdmin && (
-        <>
-          <select value={dapur} onChange={(e) => setDapur(e.target.value)}>
-            {dapurList.map((d) => (
-              <option key={d}>{d}</option>
-            ))}
-          </select>
-
-          {sayur.map((s, i) => (
-            <div key={i}>
-              <input
-                placeholder="Nama Sayur"
-                value={s.nama}
-                onChange={(e) => {
-                  const n = [...sayur];
-                  n[i].nama = e.target.value;
-                  setSayur(n);
-                }}
-              />
-              <input
-                type="number"
-                placeholder="Kg"
-                value={s.kg}
-                onChange={(e) => {
-                  const n = [...sayur];
-                  n[i].kg = Number(e.target.value);
-                  setSayur(n);
-                }}
-              />
-            </div>
+      <div className="dapur-card">
+        <select
+          value={pesanan.dapur}
+          onChange={(e) => setPesanan({ ...pesanan, dapur: e.target.value })}
+        >
+          {dapurList.map((d) => (
+            <option key={d}>{d}</option>
           ))}
+        </select>
 
-          <button onClick={() => setSayur([...sayur, { nama: "", kg: 0 }])}>
-            + Tambah Sayur
-          </button>
+        {pesanan.sayur.map((s, i) => (
+          <div key={i} style={{ marginTop: 6 }}>
+            <input
+              placeholder="Nama Sayur"
+              value={s.nama}
+              onChange={(e) => updateSayur(i, "nama", e.target.value)}
+            />
+            <input
+              type="number"
+              value={s.kg}
+              onChange={(e) => updateSayur(i, "kg", e.target.value)}
+            />
+            <button className="danger" onClick={() => hapusSayur(i)}>
+              Hapus
+            </button>
+          </div>
+        ))}
 
-          <br /><br />
+        <button onClick={tambahSayur}>+ Tambah Sayur</button>
+        <br />
+        <br />
+        <button onClick={simpanPesanan}>💾 SIMPAN PESANAN</button>
+      </div>
 
-          <button onClick={simpanPesanan}>
-            💾 SIMPAN PESANAN
-          </button>
-        </>
-      )}
-
-      {/* ADMIN PANEL */}
+      {/* ADMIN */}
       <div className="admin-panel">
         {!isAdmin ? (
           <>
             <input
               type="password"
               placeholder="PIN Admin"
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
+              value={pinInput}
+              onChange={(e) => setPinInput(e.target.value)}
             />
             <button
               onClick={() => {
-                if (pin === ADMIN_PIN) {
-                  setIsAdmin(true);
-                  setPin("");
-                } else {
-                  alert("❌ PIN salah");
-                }
+                if (pinInput === ADMIN_PIN) setIsAdmin(true);
+                else alert("PIN salah");
               }}
             >
               Masuk Admin
             </button>
           </>
         ) : (
-          <>
-            <strong>MODE ADMIN</strong><br />
-            <input
-              type="date"
-              value={tanggal}
-              onChange={(e) => setTanggal(e.target.value)}
-            />
-            <button onClick={() => setIsAdmin(false)}>
-              Keluar
-            </button>
-          </>
+          <strong>Mode Admin Aktif</strong>
         )}
       </div>
-
-      {/* DATA ADMIN */}
-      {isAdmin && (
-        <div className="dapur-grid">
-          {dataAdmin.map((d) => (
-            <div className="dapur-card" key={d.id}>
-              <strong>{d.dapur}</strong><br />
-              {d.nama_sayur} — {d.kg} Kg
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
