@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-
+const supabaseUrl = "https://rqmcpnkpctdlrayvouly.supabase.co";
+const supabaseAnonKey = "sb_publishable_8Phqrx84tQKTHlm5Rkwffw__qC0V3Q2";
 /* ======================
    KONFIGURASI
 ====================== */
