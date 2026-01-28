@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
    SUPABASE
 ====================== */
 const supabaseUrl = "https://rqmcpnkpctdlrayvouly.supabase.co";
-const supabaseAnonKey = "PASTE_ANON_KEY_LU_DI_SINI";
+const supabaseAnonKey = "sb_publishable_8Phqrx84tQKTHlm5Rkwffw__qC0V3Q2";
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /* ======================
