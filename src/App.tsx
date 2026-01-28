@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 /* ======================
@@ -30,6 +30,14 @@ const todayISO = new Date().toISOString().split("T")[0];
 type Sayur = { nama: string; kg: number };
 type DapurData = { nama: string; sayur: Sayur[] };
 
+type Order = {
+  id: string;
+  tanggal: string;
+  dapur: string;
+  nama_sayur: string;
+  kg: number;
+};
+
 /* ======================
    APP
 ====================== */
@@ -45,8 +53,13 @@ export default function App() {
     }))
   );
 
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editNama, setEditNama] = useState("");
+  const [editKg, setEditKg] = useState(0);
+
   /* ======================
-     HANDLER
+     HANDLER INPUT
   ====================== */
   const updateSayur = (
     dIndex: number,
@@ -104,31 +117,52 @@ export default function App() {
   };
 
   /* ======================
-     EXPORT (ADMIN)
+     ADMIN LOAD DATA
   ====================== */
-  const exportExcel = async () => {
+  const loadOrders = async () => {
     const { data, error } = await supabase
       .from("aplikasi_rekap_sayur")
       .select("*")
       .eq("tanggal", tanggal)
       .order("dapur");
 
+    if (!error && data) setOrders(data);
+  };
+
+  useEffect(() => {
+    if (isAdmin) loadOrders();
+  }, [isAdmin, tanggal]);
+
+  /* ======================
+     ADMIN EDIT
+  ====================== */
+  const simpanEdit = async () => {
+    const { error } = await supabase
+      .from("aplikasi_rekap_sayur")
+      .update({
+        nama_sayur: editNama,
+        kg: editKg,
+      })
+      .eq("id", editId);
+
     if (error) {
-      alert("❌ Gagal ambil data");
-      return;
+      alert("❌ Gagal update");
+    } else {
+      alert("✅ Data diperbarui");
+      setEditId(null);
+      loadOrders();
     }
+  };
 
-    let csv = "Tanggal,Dapur,Nama Sayur,Kg\n";
-    data.forEach((r) => {
-      csv += `${r.tanggal},${r.dapur},${r.nama_sayur},${r.kg}\n`;
-    });
+  const hapusOrder = async (id: string) => {
+    if (!confirm("Hapus pesanan ini?")) return;
 
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `Rekap-Sayur-${tanggal}.csv`;
-    link.click();
+    const { error } = await supabase
+      .from("aplikasi_rekap_sayur")
+      .delete()
+      .eq("id", id);
+
+    if (!error) loadOrders();
   };
 
   /* ======================
@@ -136,7 +170,6 @@ export default function App() {
   ====================== */
   return (
     <div className="app-container">
-      {/* HEADER */}
       <div className="app-header">
         <h2>Rekap Kebutuhan Sayur – MBG</h2>
         <p>{tanggal}</p>
@@ -177,27 +210,18 @@ export default function App() {
             >
               Keluar Admin
             </button>
-
-            <div style={{ marginTop: 10 }}>
-              <button onClick={exportExcel} style={{ marginRight: 10 }}>
-                📊 Export Excel
-              </button>
-              <button onClick={() => window.print()}>
-                🧾 Export PDF
-              </button>
-            </div>
           </>
         )}
       </div>
 
-      {/* GRID */}
+      {/* GRID DAPUR */}
       <div className="dapur-grid">
         {data.map((d, dIndex) => (
           <div className="dapur-card" key={dIndex}>
             <h3>{d.nama}</h3>
 
             {d.sayur.map((s, sIndex) => (
-              <div key={sIndex} style={{ marginBottom: 6 }}>
+              <div key={sIndex}>
                 <input
                   placeholder="Nama Sayur"
                   value={s.nama}
@@ -234,6 +258,57 @@ export default function App() {
           </div>
         ))}
       </div>
+
+      {/* ADMIN LIST */}
+      {isAdmin && (
+        <div style={{ marginTop: 30 }}>
+          <h3>📋 Data Pesanan</h3>
+
+          {orders.map((o) => (
+            <div className="dapur-card" key={o.id}>
+              <strong>{o.dapur}</strong> —{" "}
+              {editId === o.id ? (
+                <>
+                  <input
+                    value={editNama}
+                    onChange={(e) => setEditNama(e.target.value)}
+                  />
+                  <input
+                    type="number"
+                    value={editKg}
+                    onChange={(e) =>
+                      setEditKg(Number(e.target.value))
+                    }
+                  />
+                  <button onClick={simpanEdit}>Simpan</button>
+                  <button onClick={() => setEditId(null)}>
+                    Batal
+                  </button>
+                </>
+              ) : (
+                <>
+                  {o.nama_sayur} ({o.kg} Kg)
+                  <button
+                    onClick={() => {
+                      setEditId(o.id);
+                      setEditNama(o.nama_sayur);
+                      setEditKg(o.kg);
+                    }}
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button
+                    className="danger"
+                    onClick={() => hapusOrder(o.id)}
+                  >
+                    🗑️ Hapus
+                  </button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
