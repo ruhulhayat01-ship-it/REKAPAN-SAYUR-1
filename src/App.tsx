@@ -1,13 +1,4 @@
-import { useEffect, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
-
-/* ======================
-   SUPABASE
-====================== */
-const supabase = createClient(
-  "https://rqmcpnkpctdlrayvouly.supabase.co",
-  "sb_publishable_8Phqrx84tQKTHlm5Rkwffw__qC0V3Q2"
-);
+import { useState } from "react";
 
 /* ======================
    KONFIGURASI
@@ -24,13 +15,9 @@ const dapurList = [
 const ADMIN_PIN = "1234";
 const todayISO = new Date().toISOString().split("T")[0];
 
-/* ======================
-   TYPE
-====================== */
 type Sayur = { nama: string; kg: number };
-type DapurData = { nama: string; sayur: Sayur[] };
 
-type Order = {
+type Pesanan = {
   id: string;
   tanggal: string;
   dapur: string;
@@ -46,56 +33,52 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [pin, setPin] = useState("");
 
-  const [data, setData] = useState<DapurData[]>(
-    dapurList.map((d) => ({
-      nama: d,
-      sayur: [{ nama: "", kg: 0 }],
-    }))
+  const [input, setInput] = useState<Record<string, Sayur[]>>(
+    Object.fromEntries(
+      dapurList.map((d) => [d, [{ nama: "", kg: 0 }]])
+    )
   );
 
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [editId, setEditId] = useState<string | null>(null);
-  const [editNama, setEditNama] = useState("");
-  const [editKg, setEditKg] = useState(0);
+  const [pesanan, setPesanan] = useState<Pesanan[]>([]);
 
   /* ======================
      HANDLER INPUT
   ====================== */
   const updateSayur = (
-    dIndex: number,
-    sIndex: number,
+    dapur: string,
+    index: number,
     field: "nama" | "kg",
     value: string
   ) => {
-    const newData = [...data];
-    newData[dIndex].sayur[sIndex][field] =
+    const newData = { ...input };
+    newData[dapur][index][field] =
       field === "kg" ? Number(value) : value;
-    setData(newData);
+    setInput(newData);
   };
 
-  const tambahSayur = (dIndex: number) => {
-    const newData = [...data];
-    newData[dIndex].sayur.push({ nama: "", kg: 0 });
-    setData(newData);
+  const tambahSayur = (dapur: string) => {
+    setInput({
+      ...input,
+      [dapur]: [...input[dapur], { nama: "", kg: 0 }],
+    });
   };
 
-  const hapusSayur = (dIndex: number, sIndex: number) => {
-    const newData = [...data];
-    newData[dIndex].sayur.splice(sIndex, 1);
-    setData(newData);
+  const hapusSayur = (dapur: string, index: number) => {
+    const newData = { ...input };
+    newData[dapur].splice(index, 1);
+    setInput(newData);
   };
 
   /* ======================
-     SIMPAN PER DAPUR
+     SIMPAN PESANAN
   ====================== */
-  const simpanPesanan = async (dIndex: number) => {
-    const dapur = data[dIndex];
-
-    const rows = dapur.sayur
+  const simpanPesanan = (dapur: string) => {
+    const rows = input[dapur]
       .filter((s) => s.nama && s.kg > 0)
       .map((s) => ({
+        id: `${tanggal}-${dapur}-${s.nama}`,
         tanggal,
-        dapur: dapur.nama,
+        dapur,
         nama_sayur: s.nama,
         kg: s.kg,
       }));
@@ -105,64 +88,34 @@ export default function App() {
       return;
     }
 
-    const { error } = await supabase
-      .from("aplikasi_rekap_sayur")
-      .insert(rows);
+    setPesanan((prev) => {
+      const tanpaDapurIni = prev.filter(
+        (p) => !(p.tanggal === tanggal && p.dapur === dapur)
+      );
+      return [...tanpaDapurIni, ...rows];
+    });
 
-    if (error) {
-      alert("❌ Gagal simpan: " + error.message);
-    } else {
-      alert(`✅ Pesanan ${dapur.nama} tersimpan`);
-    }
+    alert(`✅ Pesanan ${dapur} tersimpan`);
   };
 
   /* ======================
-     ADMIN LOAD DATA
+     EDIT & HAPUS PESANAN
   ====================== */
-  const loadOrders = async () => {
-    const { data, error } = await supabase
-      .from("aplikasi_rekap_sayur")
-      .select("*")
-      .eq("tanggal", tanggal)
-      .order("dapur");
-
-    if (!error && data) setOrders(data);
+  const updatePesanan = (id: string, field: "nama_sayur" | "kg", value: string) => {
+    setPesanan((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              [field]: field === "kg" ? Number(value) : value,
+            }
+          : p
+      )
+    );
   };
 
-  useEffect(() => {
-    if (isAdmin) loadOrders();
-  }, [isAdmin, tanggal]);
-
-  /* ======================
-     ADMIN EDIT
-  ====================== */
-  const simpanEdit = async () => {
-    const { error } = await supabase
-      .from("aplikasi_rekap_sayur")
-      .update({
-        nama_sayur: editNama,
-        kg: editKg,
-      })
-      .eq("id", editId);
-
-    if (error) {
-      alert("❌ Gagal update");
-    } else {
-      alert("✅ Data diperbarui");
-      setEditId(null);
-      loadOrders();
-    }
-  };
-
-  const hapusOrder = async (id: string) => {
-    if (!confirm("Hapus pesanan ini?")) return;
-
-    const { error } = await supabase
-      .from("aplikasi_rekap_sayur")
-      .delete()
-      .eq("id", id);
-
-    if (!error) loadOrders();
+  const hapusPesanan = (id: string) => {
+    setPesanan((prev) => prev.filter((p) => p.id !== id));
   };
 
   /* ======================
@@ -170,6 +123,7 @@ export default function App() {
   ====================== */
   return (
     <div className="app-container">
+      {/* HEADER */}
       <div className="app-header">
         <h2>Rekap Kebutuhan Sayur – MBG</h2>
         <p>{tanggal}</p>
@@ -187,9 +141,7 @@ export default function App() {
             />
             <button
               onClick={() =>
-                pin === ADMIN_PIN
-                  ? setIsAdmin(true)
-                  : alert("PIN salah")
+                pin === ADMIN_PIN ? setIsAdmin(true) : alert("PIN salah")
               }
             >
               Masuk Admin
@@ -204,111 +156,100 @@ export default function App() {
               value={tanggal}
               onChange={(e) => setTanggal(e.target.value)}
             />
-            <button
-              className="secondary"
-              onClick={() => setIsAdmin(false)}
-            >
+            <button className="secondary" onClick={() => setIsAdmin(false)}>
               Keluar Admin
             </button>
           </>
         )}
       </div>
 
-      {/* GRID DAPUR */}
+      {/* GRID INPUT */}
       <div className="dapur-grid">
-        {data.map((d, dIndex) => (
-          <div className="dapur-card" key={dIndex}>
-            <h3>{d.nama}</h3>
+        {dapurList.map((dapur) => (
+          <div className="dapur-card" key={dapur}>
+            <h3>{dapur}</h3>
 
-            {d.sayur.map((s, sIndex) => (
-              <div key={sIndex}>
+            {input[dapur].map((s, i) => (
+              <div key={i} style={{ marginBottom: 6 }}>
                 <input
                   placeholder="Nama Sayur"
                   value={s.nama}
                   onChange={(e) =>
-                    updateSayur(dIndex, sIndex, "nama", e.target.value)
+                    updateSayur(dapur, i, "nama", e.target.value)
                   }
                 />
                 <input
                   type="number"
                   value={s.kg}
                   onChange={(e) =>
-                    updateSayur(dIndex, sIndex, "kg", e.target.value)
+                    updateSayur(dapur, i, "kg", e.target.value)
                   }
                 />
                 <button
                   className="danger"
-                  onClick={() => hapusSayur(dIndex, sIndex)}
+                  onClick={() => hapusSayur(dapur, i)}
                 >
                   Hapus
                 </button>
               </div>
             ))}
 
-            <button onClick={() => tambahSayur(dIndex)}>
-              + Tambah Sayur
-            </button>
-
-            <br />
-            <br />
-
-            <button onClick={() => simpanPesanan(dIndex)}>
+            <button onClick={() => tambahSayur(dapur)}>+ Tambah Sayur</button>
+            <br /><br />
+            <button onClick={() => simpanPesanan(dapur)}>
               💾 SIMPAN PESANAN
             </button>
           </div>
         ))}
       </div>
 
-      {/* ADMIN LIST */}
-      {isAdmin && (
-        <div style={{ marginTop: 30 }}>
-          <h3>📋 Data Pesanan</h3>
+      {/* DATA PESANAN */}
+      <h3 style={{ marginTop: 30 }}>📋 Data Pesanan</h3>
 
-          {orders.map((o) => (
-            <div className="dapur-card" key={o.id}>
-              <strong>{o.dapur}</strong> —{" "}
-              {editId === o.id ? (
-                <>
+      <table width="100%" cellPadding={6} border={1}>
+        <thead>
+          <tr>
+            <th>Dapur</th>
+            <th>Sayur</th>
+            <th>Kg</th>
+            <th>Aksi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pesanan
+            .filter((p) => p.tanggal === tanggal)
+            .map((p) => (
+              <tr key={p.id}>
+                <td>{p.dapur}</td>
+                <td>
                   <input
-                    value={editNama}
-                    onChange={(e) => setEditNama(e.target.value)}
-                  />
-                  <input
-                    type="number"
-                    value={editKg}
+                    value={p.nama_sayur}
                     onChange={(e) =>
-                      setEditKg(Number(e.target.value))
+                      updatePesanan(p.id, "nama_sayur", e.target.value)
                     }
                   />
-                  <button onClick={simpanEdit}>Simpan</button>
-                  <button onClick={() => setEditId(null)}>
-                    Batal
-                  </button>
-                </>
-              ) : (
-                <>
-                  {o.nama_sayur} ({o.kg} Kg)
-                  <button
-                    onClick={() => {
-                      setEditId(o.id);
-                      setEditNama(o.nama_sayur);
-                      setEditKg(o.kg);
-                    }}
-                  >
-                    ✏️ Edit
-                  </button>
+                </td>
+                <td>
+                  <input
+                    type="number"
+                    value={p.kg}
+                    onChange={(e) =>
+                      updatePesanan(p.id, "kg", e.target.value)
+                    }
+                  />
+                </td>
+                <td>
                   <button
                     className="danger"
-                    onClick={() => hapusOrder(o.id)}
+                    onClick={() => hapusPesanan(p.id)}
                   >
-                    🗑️ Hapus
+                    Hapus
                   </button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+                </td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
     </div>
   );
 }
