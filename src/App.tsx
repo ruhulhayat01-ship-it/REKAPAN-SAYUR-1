@@ -12,7 +12,7 @@ const dapurList = [
   "Randuagung",
 ];
 
-const ADMIN_PIN = "1234"; // ganti PIN sesukamu
+const ADMIN_PIN = "0852"; // ganti PIN sesukamu
 const todayISO = new Date().toISOString().split("T")[0];
 
 const tanggalIndonesia = new Date().toLocaleDateString("id-ID", {
