@@ -6,7 +6,7 @@ import { createClient } from "@supabase/supabase-js";
 ====================== */
 const supabase = createClient(
   "https://rqmcpnkpctdlrayvouly.supabase.co",
-  "ISI_ANON_PUBLIC_KEY"
+  "sb_publishable_8Phqrx84tQKTHlm5Rkwffw__qC0V3Q2"
 );
 
 /* ======================
