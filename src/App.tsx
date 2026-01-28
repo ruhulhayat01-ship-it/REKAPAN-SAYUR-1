@@ -1,4 +1,13 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+/* ======================
+   SUPABASE
+====================== */
+const supabase = createClient(
+  "https://rqmcpnkpctdlrayvouly.supabase.co",
+  "sb_publishable_8Phqrx84tQKTHlm5Rkwffw__qC0V3Q2"
+);
 
 /* ======================
    KONFIGURASI
@@ -16,7 +25,6 @@ const ADMIN_PIN = "1234";
 const todayISO = new Date().toISOString().split("T")[0];
 
 type Sayur = { nama: string; kg: number };
-
 type Pesanan = {
   id: string;
   tanggal: string;
@@ -33,13 +41,32 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [pin, setPin] = useState("");
 
+  /* INPUT PER DAPUR */
   const [input, setInput] = useState<Record<string, Sayur[]>>(
     Object.fromEntries(
       dapurList.map((d) => [d, [{ nama: "", kg: 0 }]])
     )
   );
 
+  /* DATA DARI DATABASE */
   const [pesanan, setPesanan] = useState<Pesanan[]>([]);
+
+  /* ======================
+     LOAD DATA DB
+  ====================== */
+  const loadPesanan = async () => {
+    const { data } = await supabase
+      .from("aplikasi_rekap_sayur")
+      .select("*")
+      .eq("tanggal", tanggal)
+      .order("created_at", { ascending: true });
+
+    setPesanan(data || []);
+  };
+
+  useEffect(() => {
+    loadPesanan();
+  }, [tanggal]);
 
   /* ======================
      HANDLER INPUT
@@ -70,13 +97,12 @@ export default function App() {
   };
 
   /* ======================
-     SIMPAN PESANAN
+     SIMPAN (UPSERT)
   ====================== */
-  const simpanPesanan = (dapur: string) => {
+  const simpanPesanan = async (dapur: string) => {
     const rows = input[dapur]
       .filter((s) => s.nama && s.kg > 0)
       .map((s) => ({
-        id: `${tanggal}-${dapur}-${s.nama}`,
         tanggal,
         dapur,
         nama_sayur: s.nama,
@@ -88,34 +114,43 @@ export default function App() {
       return;
     }
 
-    setPesanan((prev) => {
-      const tanpaDapurIni = prev.filter(
-        (p) => !(p.tanggal === tanggal && p.dapur === dapur)
-      );
-      return [...tanpaDapurIni, ...rows];
-    });
+    await supabase
+      .from("aplikasi_rekap_sayur")
+      .upsert(rows, {
+        onConflict: "tanggal,dapur,nama_sayur",
+      });
 
+    await loadPesanan();
     alert(`✅ Pesanan ${dapur} tersimpan`);
   };
 
   /* ======================
-     EDIT & HAPUS PESANAN
+     EDIT & HAPUS (DB)
   ====================== */
-  const updatePesanan = (id: string, field: "nama_sayur" | "kg", value: string) => {
-    setPesanan((prev) =>
-      prev.map((p) =>
-        p.id === id
-          ? {
-              ...p,
-              [field]: field === "kg" ? Number(value) : value,
-            }
-          : p
-      )
-    );
+  const updatePesanan = async (
+    id: string,
+    field: "nama_sayur" | "kg",
+    value: string
+  ) => {
+    await supabase
+      .from("aplikasi_rekap_sayur")
+      .update({
+        [field]: field === "kg" ? Number(value) : value,
+      })
+      .eq("id", id);
+
+    loadPesanan();
   };
 
-  const hapusPesanan = (id: string) => {
-    setPesanan((prev) => prev.filter((p) => p.id !== id));
+  const hapusPesanan = async (id: string) => {
+    if (!confirm("Hapus pesanan ini?")) return;
+
+    await supabase
+      .from("aplikasi_rekap_sayur")
+      .delete()
+      .eq("id", id);
+
+    loadPesanan();
   };
 
   /* ======================
@@ -123,7 +158,6 @@ export default function App() {
   ====================== */
   return (
     <div className="app-container">
-      {/* HEADER */}
       <div className="app-header">
         <h2>Rekap Kebutuhan Sayur – MBG</h2>
         <p>{tanggal}</p>
@@ -141,7 +175,9 @@ export default function App() {
             />
             <button
               onClick={() =>
-                pin === ADMIN_PIN ? setIsAdmin(true) : alert("PIN salah")
+                pin === ADMIN_PIN
+                  ? setIsAdmin(true)
+                  : alert("PIN salah")
               }
             >
               Masuk Admin
@@ -163,14 +199,14 @@ export default function App() {
         )}
       </div>
 
-      {/* GRID INPUT */}
+      {/* INPUT GRID */}
       <div className="dapur-grid">
         {dapurList.map((dapur) => (
           <div className="dapur-card" key={dapur}>
             <h3>{dapur}</h3>
 
             {input[dapur].map((s, i) => (
-              <div key={i} style={{ marginBottom: 6 }}>
+              <div key={i}>
                 <input
                   placeholder="Nama Sayur"
                   value={s.nama}
@@ -194,7 +230,9 @@ export default function App() {
               </div>
             ))}
 
-            <button onClick={() => tambahSayur(dapur)}>+ Tambah Sayur</button>
+            <button onClick={() => tambahSayur(dapur)}>
+              + Tambah Sayur
+            </button>
             <br /><br />
             <button onClick={() => simpanPesanan(dapur)}>
               💾 SIMPAN PESANAN
@@ -203,7 +241,7 @@ export default function App() {
         ))}
       </div>
 
-      {/* DATA PESANAN */}
+      {/* TABEL DATA */}
       <h3 style={{ marginTop: 30 }}>📋 Data Pesanan</h3>
 
       <table width="100%" cellPadding={6} border={1}>
@@ -216,38 +254,36 @@ export default function App() {
           </tr>
         </thead>
         <tbody>
-          {pesanan
-            .filter((p) => p.tanggal === tanggal)
-            .map((p) => (
-              <tr key={p.id}>
-                <td>{p.dapur}</td>
-                <td>
-                  <input
-                    value={p.nama_sayur}
-                    onChange={(e) =>
-                      updatePesanan(p.id, "nama_sayur", e.target.value)
-                    }
-                  />
-                </td>
-                <td>
-                  <input
-                    type="number"
-                    value={p.kg}
-                    onChange={(e) =>
-                      updatePesanan(p.id, "kg", e.target.value)
-                    }
-                  />
-                </td>
-                <td>
-                  <button
-                    className="danger"
-                    onClick={() => hapusPesanan(p.id)}
-                  >
-                    Hapus
-                  </button>
-                </td>
-              </tr>
-            ))}
+          {pesanan.map((p) => (
+            <tr key={p.id}>
+              <td>{p.dapur}</td>
+              <td>
+                <input
+                  value={p.nama_sayur}
+                  onChange={(e) =>
+                    updatePesanan(p.id, "nama_sayur", e.target.value)
+                  }
+                />
+              </td>
+              <td>
+                <input
+                  type="number"
+                  value={p.kg}
+                  onChange={(e) =>
+                    updatePesanan(p.id, "kg", e.target.value)
+                  }
+                />
+              </td>
+              <td>
+                <button
+                  className="danger"
+                  onClick={() => hapusPesanan(p.id)}
+                >
+                  Hapus
+                </button>
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
