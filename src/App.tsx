@@ -25,12 +25,16 @@ const ADMIN_PIN = "1234";
 const todayISO = new Date().toISOString().split("T")[0];
 
 type Sayur = { nama: string; kg: number };
+
 type Pesanan = {
   id: string;
   tanggal: string;
   dapur: string;
   nama_sayur: string;
   kg: number;
+  keterangan: string | null;
+  tanggal_kirim: string | null;
+  is_saved: boolean;
 };
 
 /* ======================
@@ -41,18 +45,14 @@ export default function App() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [pin, setPin] = useState("");
 
-  /* INPUT PER DAPUR */
   const [input, setInput] = useState<Record<string, Sayur[]>>(
-    Object.fromEntries(
-      dapurList.map((d) => [d, [{ nama: "", kg: 0 }]])
-    )
+    Object.fromEntries(dapurList.map((d) => [d, [{ nama: "", kg: 0 }]]))
   );
 
-  /* DATA DARI DATABASE */
   const [pesanan, setPesanan] = useState<Pesanan[]>([]);
 
   /* ======================
-     LOAD DATA DB
+     LOAD DATA
   ====================== */
   const loadPesanan = async () => {
     const { data } = await supabase
@@ -69,7 +69,7 @@ export default function App() {
   }, [tanggal]);
 
   /* ======================
-     HANDLER INPUT
+     INPUT DAPUR
   ====================== */
   const updateSayur = (
     dapur: string,
@@ -97,7 +97,7 @@ export default function App() {
   };
 
   /* ======================
-     SIMPAN (UPSERT)
+     SIMPAN DRAFT
   ====================== */
   const simpanPesanan = async (dapur: string) => {
     const rows = input[dapur]
@@ -107,6 +107,7 @@ export default function App() {
         dapur,
         nama_sayur: s.nama,
         kg: s.kg,
+        is_saved: false,
       }));
 
     if (!rows.length) {
@@ -120,23 +121,21 @@ export default function App() {
         onConflict: "tanggal,dapur,nama_sayur",
       });
 
-    await loadPesanan();
-    alert(`✅ Pesanan ${dapur} tersimpan`);
+    loadPesanan();
+    alert(`✅ Draft ${dapur} tersimpan`);
   };
 
   /* ======================
-     EDIT & HAPUS (DB)
+     UPDATE FIELD
   ====================== */
   const updatePesanan = async (
     id: string,
-    field: "nama_sayur" | "kg",
-    value: string
+    field: keyof Pesanan,
+    value: any
   ) => {
     await supabase
       .from("aplikasi_rekap_sayur")
-      .update({
-        [field]: field === "kg" ? Number(value) : value,
-      })
+      .update({ [field]: value })
       .eq("id", id);
 
     loadPesanan();
@@ -144,12 +143,22 @@ export default function App() {
 
   const hapusPesanan = async (id: string) => {
     if (!confirm("Hapus pesanan ini?")) return;
+    await supabase.from("aplikasi_rekap_sayur").delete().eq("id", id);
+    loadPesanan();
+  };
+
+  const saveFinal = async (p: Pesanan) => {
+    if (!p.tanggal_kirim) {
+      alert("❌ Tanggal kirim wajib diisi");
+      return;
+    }
 
     await supabase
       .from("aplikasi_rekap_sayur")
-      .delete()
-      .eq("id", id);
+      .update({ is_saved: true })
+      .eq("id", p.id);
 
+    alert("✅ Pesanan FINAL disimpan");
     loadPesanan();
   };
 
@@ -158,10 +167,7 @@ export default function App() {
   ====================== */
   return (
     <div className="app-container">
-      <div className="app-header">
-        <h2>Rekap Kebutuhan Sayur – MBG</h2>
-        <p>{tanggal}</p>
-      </div>
+      <h2>Rekap Kebutuhan Sayur – MBG</h2>
 
       {/* ADMIN */}
       <div className="admin-panel">
@@ -173,83 +179,56 @@ export default function App() {
               value={pin}
               onChange={(e) => setPin(e.target.value)}
             />
-            <button
-              onClick={() =>
-                pin === ADMIN_PIN
-                  ? setIsAdmin(true)
-                  : alert("PIN salah")
-              }
-            >
+            <button onClick={() => pin === ADMIN_PIN ? setIsAdmin(true) : alert("PIN salah")}>
               Masuk Admin
             </button>
           </>
         ) : (
           <>
-            <strong>Mode Admin Aktif</strong>
-            <br />
-            <input
-              type="date"
-              value={tanggal}
-              onChange={(e) => setTanggal(e.target.value)}
-            />
-            <button className="secondary" onClick={() => setIsAdmin(false)}>
-              Keluar Admin
-            </button>
+            <strong>Mode Admin</strong><br />
+            <input type="date" value={tanggal} onChange={(e) => setTanggal(e.target.value)} />
+            <button onClick={() => setIsAdmin(false)}>Keluar</button>
           </>
         )}
       </div>
 
-      {/* INPUT GRID */}
+      {/* INPUT */}
       <div className="dapur-grid">
         {dapurList.map((dapur) => (
-          <div className="dapur-card" key={dapur}>
+          <div key={dapur}>
             <h3>{dapur}</h3>
-
             {input[dapur].map((s, i) => (
               <div key={i}>
                 <input
                   placeholder="Nama Sayur"
                   value={s.nama}
-                  onChange={(e) =>
-                    updateSayur(dapur, i, "nama", e.target.value)
-                  }
+                  onChange={(e) => updateSayur(dapur, i, "nama", e.target.value)}
                 />
                 <input
                   type="number"
                   value={s.kg}
-                  onChange={(e) =>
-                    updateSayur(dapur, i, "kg", e.target.value)
-                  }
+                  onChange={(e) => updateSayur(dapur, i, "kg", e.target.value)}
                 />
-                <button
-                  className="danger"
-                  onClick={() => hapusSayur(dapur, i)}
-                >
-                  Hapus
-                </button>
+                <button onClick={() => hapusSayur(dapur, i)}>Hapus</button>
               </div>
             ))}
-
-            <button onClick={() => tambahSayur(dapur)}>
-              + Tambah Sayur
-            </button>
-            <br /><br />
-            <button onClick={() => simpanPesanan(dapur)}>
-              💾 SIMPAN PESANAN
-            </button>
+            <button onClick={() => tambahSayur(dapur)}>+ Tambah Sayur</button><br />
+            <button onClick={() => simpanPesanan(dapur)}>💾 SIMPAN PESANAN</button>
           </div>
         ))}
       </div>
 
-      {/* TABEL DATA */}
-      <h3 style={{ marginTop: 30 }}>📋 Data Pesanan</h3>
-
-      <table width="100%" cellPadding={6} border={1}>
+      {/* TABEL */}
+      <h3>📋 Data Pesanan</h3>
+      <table width="100%" border={1} cellPadding={6}>
         <thead>
           <tr>
             <th>Dapur</th>
             <th>Sayur</th>
             <th>Kg</th>
+            <th>Keterangan</th>
+            <th>Tgl Kirim</th>
+            <th>Status</th>
             <th>Aksi</th>
           </tr>
         </thead>
@@ -257,30 +236,14 @@ export default function App() {
           {pesanan.map((p) => (
             <tr key={p.id}>
               <td>{p.dapur}</td>
+              <td><input value={p.nama_sayur} onChange={(e) => updatePesanan(p.id, "nama_sayur", e.target.value)} /></td>
+              <td><input type="number" value={p.kg} onChange={(e) => updatePesanan(p.id, "kg", Number(e.target.value))} /></td>
+              <td><input value={p.keterangan || ""} onChange={(e) => updatePesanan(p.id, "keterangan", e.target.value)} /></td>
+              <td><input type="date" value={p.tanggal_kirim || ""} onChange={(e) => updatePesanan(p.id, "tanggal_kirim", e.target.value)} /></td>
+              <td>{p.is_saved ? "✅ FINAL" : "🕓 DRAFT"}</td>
               <td>
-                <input
-                  value={p.nama_sayur}
-                  onChange={(e) =>
-                    updatePesanan(p.id, "nama_sayur", e.target.value)
-                  }
-                />
-              </td>
-              <td>
-                <input
-                  type="number"
-                  value={p.kg}
-                  onChange={(e) =>
-                    updatePesanan(p.id, "kg", e.target.value)
-                  }
-                />
-              </td>
-              <td>
-                <button
-                  className="danger"
-                  onClick={() => hapusPesanan(p.id)}
-                >
-                  Hapus
-                </button>
+                {!p.is_saved && <button onClick={() => saveFinal(p)}>SAVE</button>}
+                <button onClick={() => hapusPesanan(p.id)}>Hapus</button>
               </td>
             </tr>
           ))}
